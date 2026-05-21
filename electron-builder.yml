@@ -1,0 +1,42 @@
+appId: ai.openclaw.github-radar
+productName: GitHub-Radar
+copyright: Copyright © 2026
+
+directories:
+  output: dist-electron
+
+files:
+  - desktop/**
+  - public/**
+  - server.mjs
+  - package.json
+  - pyproject.toml
+  - app/**
+  - github_radar/**
+  - .env.example
+
+extraResources:
+  - from: dist-sidecar
+    to: sidecar
+    filter:
+      - '**/*'
+
+asarUnpack:
+  - dist-sidecar/**
+  - '**/*.node'
+
+linux:
+  target:
+    - AppImage
+    - tar.gz
+  executableName: github-radar
+  category: Utility
+
+win:
+  target:
+    - nsis
+    - zip
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

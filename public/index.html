@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitHub Radar</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+/* ── Reset & Variables ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #fafbfc;
+  --bg-card: #ffffff;
+  --bg-sidebar: #f0f2f5;
+  --bg-hover: #e8eaed;
+  --bg-active: #d3e3fd;
+  --bg-input: #ffffff;
+  --bg-modal: rgba(0,0,0,0.4);
+  --text: #1a1a2e;
+  --text-secondary: #5f6368;
+  --text-muted: #9aa0a6;
+  --border: #dadce0;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --star: #e8b730;
+  --green: #16a34a;
+  --red: #dc2626;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
+  --radius: 8px;
+  --radius-lg: 12px;
+  --transition: 0.2s ease;
+  --sidebar-w: 300px;
+  --sidebar-collapsed: 0px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.theme-dark {
+  --bg: #1a1a2e;
+  --bg-card: #22223a;
+  --bg-sidebar: #16162b;
+  --bg-hover: #2a2a44;
+  --bg-active: #1d3a6e;
+  --bg-input: #2a2a44;
+  --bg-modal: rgba(0,0,0,0.7);
+  --text: #e2e4e9;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --border: #3a3a55;
+  --accent: #60a5fa;
+  --accent-hover: #93bbfd;
+  --star: #fbbf24;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); }
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+#app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-w); min-width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  transition: width var(--transition), min-width var(--transition);
+  overflow: hidden; z-index: 10;
+}
+#sidebar.collapsed {
+  width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed);
+  border-right: none;
+}
+
+.sidebar-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.sidebar-header h2 { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.sidebar-header h2 .icon { font-size: 20px; }
+
+.collapse-btn {
+  background: none; border: none; cursor: pointer; color: var(--text-secondary);
+  font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: transform var(--transition);
+}
+.collapse-btn:hover { background: var(--bg-hover); }
+#sidebar.collapsed .collapse-btn { transform: rotate(180deg); }
+
+.sidebar-search {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.sidebar-search input {
+  width: 100%; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--bg-input); color: var(--text); font-size: 13px; outline: none;
+}
+.sidebar-search input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+
+.project-list { flex: 1; overflow-y: auto; padding: 8px; }
+.project-list::-webkit-scrollbar { width: 4px; }
+.project-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.project-item {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 12px; border-radius: var(--radius); cursor: pointer;
+  transition: background var(--transition); margin-bottom: 2px;
+  white-space: nowrap;
+}
+.project-item:hover { background: var(--bg-hover); }
+.project-item.active { background: var(--bg-active); }
+.project-item .name { font-size: 13px; font-weight: 600; color: var(--text); }
+.project-item .meta {
+  display: flex; gap: 10px; font-size: 11px; color: var(--text-secondary);
+}
+.project-item .meta .stars { color: var(--star); }
+.project-item .meta .lang { color: var(--accent); }
+.project-item .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.project-item .tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 10px;
+  background: var(--bg-hover); color: var(--text-secondary);
+}
+.project-item.active .tag { background: rgba(37,99,235,0.15); color: var(--accent); }
+
+/* ── Main Content ──────────────────────────────────────────────────── */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* ── Topbar ────────────────────────────────────────────────────────── */
+#topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+#topbar .toggle-sidebar {
+  background: none; border: none; cursor: pointer; color: var(--text-secondary);
+  font-size: 18px; padding: 4px 6px; border-radius: 4px;
+}
+#topbar .toggle-sidebar:hover { background: var(--bg-hover); }
+
+.global-search { flex: 1; display: flex; gap: 0; max-width: 600px; position: relative; }
+.global-search input {
+  flex: 1; padding: 10px 16px; border: 1px solid var(--border); border-right: none;
+  border-radius: var(--radius) 0 0 var(--radius); background: var(--bg-input);
+  color: var(--text); font-size: 14px; outline: none;
+}
+.global-search input:focus { border-color: var(--accent); }
+.global-search input::placeholder { color: var(--text-muted); }
+.global-search button {
+  padding: 10px 20px; background: var(--accent); color: #fff; border: 1px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0; cursor: pointer; font-size: 14px;
+  font-weight: 500; transition: background var(--transition);
+}
+.global-search button:hover { background: var(--accent-hover); }
+.search-hint {
+  position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
+  font-size: 12px; color: var(--text-secondary); padding: 0 4px;
+}
+
+.topbar-actions { display: flex; align-items: center; gap: 6px; }
+.topbar-btn {
+  background: none; border: 1px solid var(--border); cursor: pointer;
+  color: var(--text-secondary); font-size: 16px; padding: 8px 12px;
+  border-radius: var(--radius); transition: all var(--transition);
+}
+.topbar-btn:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ── Content Views ─────────────────────────────────────────────────── */
+#view { flex: 1; overflow-y: auto; padding: 0; }
+
+/* Home View */
+.home-view { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+.home-view h3 { font-size: 18px; margin-bottom: 16px; color: var(--text); }
+.home-view .interpreted {
+  padding: 12px 16px; background: var(--bg-sidebar); border-radius: var(--radius);
+  margin-bottom: 20px; font-size: 14px; color: var(--text-secondary);
+  border-left: 3px solid var(--accent);
+}
+.home-view .interpreted .fallback-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  background: #fef3c7; color: #92400e; font-size: 11px; margin-left: 8px;
+}
+.search-error-panel {
+  background: var(--bg-card); border: 1px solid var(--red); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.search-error-panel .error-head { padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.search-error-panel .error-head h3 { margin: 0 0 8px; color: var(--red); }
+.search-error-panel .error-meta { font-size: 12px; color: var(--text-secondary); display: grid; gap: 4px; }
+.search-error-panel .error-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.search-error-panel .error-section:last-child { border-bottom: none; }
+.search-error-panel .error-section h4 { margin: 0 0 10px; font-size: 14px; color: var(--text); }
+.search-error-panel pre {
+  max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  background: var(--bg-sidebar); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px; font-size: 12px; line-height: 1.55;
+}
+.search-error-panel .copy-btn {
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-input);
+  color: var(--text); padding: 6px 10px; cursor: pointer; font-size: 12px; margin-bottom: 8px;
+}
+.search-error-panel .copy-btn:hover { background: var(--bg-hover); }
+
+.project-cards { display: flex; flex-direction: column; gap: 12px; }
+.project-card {
+  display: block; text-decoration: none; color: inherit;
+  padding: 20px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow);
+  transition: box-shadow var(--transition), transform var(--transition);
+  cursor: pointer;
+}
+.project-card:hover {
+  box-shadow: var(--shadow-lg); transform: translateY(-1px);
+}
+.project-card .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.project-card .card-name { font-size: 16px; font-weight: 700; color: var(--accent); }
+.project-card .card-stats { display: flex; gap: 12px; font-size: 13px; color: var(--text-secondary); }
+.project-card .card-stats .stars { color: var(--star); }
+.project-card .card-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; line-height: 1.5; }
+.project-card .card-takeaway {
+  font-size: 13px; color: var(--text); background: var(--bg-sidebar);
+  padding: 8px 12px; border-radius: 6px; border-left: 3px solid var(--green);
+}
+.project-card .card-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.project-card .card-tag {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: var(--bg-hover); color: var(--text-secondary);
+}
+
+/* Detail View */
+.detail-view { max-width: 860px; margin: 0 auto; padding: 32px 24px; }
+.detail-view .back-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-card); color: var(--text-secondary); cursor: pointer;
+  font-size: 13px; margin-bottom: 20px;
+}
+.detail-view .back-btn:hover { background: var(--bg-hover); }
+.detail-view .detail-header {
+  margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+}
+.detail-view .detail-header .repo-name {
+  font-size: 24px; font-weight: 700; color: var(--accent);
+  display: flex; align-items: center; gap: 12px;
+}
+.detail-view .detail-header .repo-meta {
+  display: flex; gap: 16px; margin-top: 8px; font-size: 13px; color: var(--text-secondary);
+}
+.detail-view .detail-header .repo-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.detail-view .detail-header .repo-tag {
+  font-size: 11px; padding: 2px 10px; border-radius: 10px;
+  background: var(--bg-hover); color: var(--text-secondary);
+}
+
+/* Markdown Content */
+.md-content {
+  font-size: 14px; line-height: 1.8; color: var(--text);
+}
+.md-content h1 { font-size: 22px; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.md-content h2 { font-size: 18px; margin: 20px 0 10px; }
+.md-content h3 { font-size: 15px; margin: 16px 0 8px; }
+.md-content p { margin: 8px 0; }
+.md-content ul, .md-content ol { padding-left: 24px; margin: 8px 0; }
+.md-content li { margin: 4px 0; }
+.md-content code {
+  font-family: var(--font-mono); font-size: 13px;
+  background: var(--bg-sidebar); padding: 2px 6px; border-radius: 4px;
+}
+.md-content pre {
+  background: var(--bg-sidebar); padding: 16px; border-radius: var(--radius);
+  overflow-x: auto; margin: 12px 0; border: 1px solid var(--border);
+}
+.md-content pre code { background: none; padding: 0; }
+.md-content blockquote {
+  border-left: 3px solid var(--accent); padding: 8px 16px;
+  margin: 12px 0; background: var(--bg-sidebar); border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-secondary);
+}
+.md-content a { color: var(--accent); text-decoration: none; }
+.md-content a:hover { text-decoration: underline; }
+.md-content hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+.md-content table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.md-content th, .md-content td {
+  padding: 8px 12px; border: 1px solid var(--border); text-align: left; font-size: 13px;
+}
+.md-content th { background: var(--bg-sidebar); font-weight: 600; }
+.md-content img { max-width: 100%; border-radius: var(--radius); }
+
+/* ── States ────────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 80px 20px; text-align: center; color: var(--text-muted);
+}
+.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+.empty-state h3 { font-size: 16px; color: var(--text-secondary); margin-bottom: 8px; }
+.empty-state p { font-size: 13px; }
+
+.loading {
+  display: flex; align-items: center; justify-content: center; padding: 40px;
+  gap: 8px; color: var(--text-secondary);
+}
+.spinner {
+  width: 20px; height: 20px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Settings Modal ────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: var(--bg-modal);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+  opacity: 0; pointer-events: none; transition: opacity var(--transition);
+}
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+
+.modal {
+  background: var(--bg-card); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); width: 460px; max-width: 90vw;
+  max-height: 85vh; overflow-y: auto; padding: 0;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px; border-bottom: 1px solid var(--border);
+}
+.modal-header h3 { font-size: 16px; }
+.modal-close {
+  background: none; border: none; cursor: pointer; color: var(--text-secondary);
+  font-size: 20px; padding: 4px 8px; border-radius: 4px;
+}
+.modal-close:hover { background: var(--bg-hover); }
+.modal-body { padding: 24px; }
+.modal-body .form-group { margin-bottom: 18px; }
+.modal-body label {
+  display: block; font-size: 13px; font-weight: 600; color: var(--text);
+  margin-bottom: 6px;
+}
+.modal-body label .hint { font-weight: 400; color: var(--text-muted); font-size: 11px; }
+.modal-body input, .modal-body select {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--bg-input); color: var(--text);
+  font-size: 13px; outline: none;
+}
+.modal-body input:focus, .modal-body select:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+}
+.modal-body .form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.modal-body .form-actions { display: flex; gap: 10px; margin-top: 24px; }
+.btn {
+  padding: 9px 20px; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+  cursor: pointer; border: none; transition: background var(--transition);
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary { background: var(--bg-hover); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { opacity: 0.85; }
+.test-result { font-size: 12px; margin-top: 6px; padding: 6px 10px; border-radius: 4px; }
+.test-result.success { background: #dcfce7; color: #166534; }
+.test-result.fail { background: #fef2f2; color: #991b1b; }
+
+/* ── Toast ─────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+  border-radius: var(--radius); box-shadow: var(--shadow-lg); z-index: 200;
+  font-size: 13px; opacity: 0; transform: translateY(10px);
+  transition: all var(--transition); pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { background: #166534; color: #dcfce7; }
+.toast.error { background: #991b1b; color: #fef2f2; }
+.toast.info { background: #1e40af; color: #dbeafe; }
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  #sidebar { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
+  #sidebar.mobile-open { width: 280px; min-width: 280px; position: fixed; height: 100vh; }
+  .detail-view { padding: 16px; }
+  .home-view { padding: 16px; }
+  .global-search { max-width: none; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ── Sidebar ──────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <h2><span class="icon">📡</span>GitHub Radar</h2>
+      <button class="collapse-btn" onclick="toggleSidebar()" title="收起侧栏">◀</button>
+    </div>
+    <div class="sidebar-search">
+      <input type="text" id="sidebar-filter" placeholder="筛选项目…" oninput="filterProjects(this.value)">
+    </div>
+    <div class="project-list" id="project-list"></div>
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────────────── -->
+  <div id="main">
+    <header id="topbar">
+      <button class="toggle-sidebar" onclick="toggleSidebar()" title="切换侧栏">☰</button>
+      <div class="global-search">
+        <input type="text" id="search-input"
+          placeholder="输入项目方向或关键词，AI 帮你找…（如：边缘计算的隐私保护项目）"
+          onkeydown="if(event.key==='Enter') doSearch()">
+        <button onclick="doSearch()">🔍 搜索</button>
+        <div class="search-hint">💡 支持自然语言：输入研究方向 / 技术栈 / 应用场景均可</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="topbar-btn" onclick="cycleTheme()" id="theme-btn" title="切换主题">🌓</button>
+        <button class="topbar-btn" onclick="openSettings()" title="设置">⚙️</button>
+      </div>
+    </header>
+
+    <div id="view">
+      <div class="empty-state" id="empty-state">
+        <div class="icon">📡</div>
+        <h3>GitHub Radar</h3>
+        <p>使用上方搜索框查找项目，或从左侧菜单选择已分析的项目</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings Modal ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="settings-overlay" onclick="closeSettings(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>⚙️ 设置</h3>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>LLM API 地址 <span class="hint">— 本地模型服务端点</span></label>
+        <input type="text" id="set-llm-url" placeholder="http://localhost:5000/v1">
+        <div class="form-hint">OpenAI-compatible endpoint，如 Ollama / vLLM / llama.cpp server</div>
+      </div>
+      <div class="form-group">
+        <label>模型名称</label>
+        <div style="display:flex;gap:8px">
+          <select id="set-model" style="flex:1">
+            <option value="">加载中…</option>
+          </select>
+          <button class="btn btn-secondary" onclick="refreshModels()" title="刷新模型列表">🔄</button>
+        </div>
+        <div id="model-test-result"></div>
+      </div>
+      <div class="form-group">
+        <label>GitHub Token <span class="hint">— 避免 API rate limit</span></label>
+        <input type="password" id="set-gh-token" placeholder="ghp_...">
+        <div class="form-hint">仅需 public_repo 权限</div>
+      </div>
+      <div class="form-group">
+        <label>Obsidian Vault 名称</label>
+        <input type="text" id="set-vault" placeholder="AI-Vault">
+      </div>
+      <div class="form-group">
+        <label>主题</label>
+        <select id="set-theme" onchange="applyTheme(this.value)">
+          <option value="light">☀️ 明亮</option>
+          <option value="dark">🌙 暗色</option>
+          <option value="system">💻 跟随系统</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveSettings()">💾 保存设置</button>
+        <button class="btn btn-secondary" onclick="closeSettings()">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────
+const STATE = {
+  projects: [],
+  filtered: [],
+  currentView: 'home',   // 'home' | 'detail'
+  currentProject: null,
+  settings: {},
+  theme: 'system',
+};
+
+// ── Theme ───────────────────────────────────────────────────────────
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme) {
+  STATE.theme = theme;
+  localStorage.setItem('ghr-theme', theme);
+  const effective = theme === 'system' ? getSystemTheme() : theme;
+  document.documentElement.className = effective === 'dark' ? 'theme-dark' : '';
+  updateThemeButton();
+}
+
+function cycleTheme() {
+  const order = ['light', 'dark', 'system'];
+  const idx = order.indexOf(STATE.theme);
+  applyTheme(order[(idx + 1) % 3]);
+}
+
+function updateThemeButton() {
+  const icons = { light: '☀️', dark: '🌙', system: '💻' };
+  const el = document.getElementById('theme-btn');
+  if (el) el.textContent = icons[STATE.theme] || '🌓';
+}
+
+// Init theme
+const saved = localStorage.getItem('ghr-theme') || 'system';
+applyTheme(saved);
+
+// Listen for system theme changes
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (STATE.theme === 'system') applyTheme('system');
+});
+
+// ── Sidebar ─────────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+}
+
+function filterProjects(query) {
+  const q = query.toLowerCase().trim();
+  STATE.filtered = q
+    ? STATE.projects.filter(p =>
+        p.full_name.toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.topics || []).some(t => t.toLowerCase().includes(q)) ||
+        (p.tags || []).some(t => t.toLowerCase().includes(q))
+      )
+    : STATE.projects;
+  renderProjectList();
+}
+
+// ── API ─────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  if (!res.ok) {
+    const err = new Error(data.message || data.error || `API error: ${res.status}`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+async function loadProjects() {
+  try {
+    STATE.projects = await api('/api/projects');
+    STATE.filtered = STATE.projects;
+    renderProjectList();
+  } catch (e) {
+    console.error('loadProjects:', e);
+    showToast('无法加载项目列表', 'error');
+  }
+}
+
+async function loadSettings() {
+  try {
+    const data = await api('/api/settings');
+    STATE.settings = data.file || {};
+    populateSettingsForm();
+  } catch (e) {
+    console.error('loadSettings:', e);
+  }
+}
+
+// ── Render ──────────────────────────────────────────────────────────
+function renderProjectList() {
+  const el = document.getElementById('project-list');
+  if (!STATE.filtered.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:12px">暂无项目</p></div>';
+    return;
+  }
+  el.innerHTML = STATE.filtered.map(p => `
+    <div class="project-item ${STATE.currentProject?.safe_name === p.safe_name ? 'active' : ''}"
+         onclick="openProject('${p.safe_name}')">
+      <div class="name">${escHtml(p.full_name)}</div>
+      <div class="meta">
+        <span class="stars">⭐${fmtNum(p.stars)}</span>
+        ${p.language ? `<span class="lang">${escHtml(p.language)}</span>` : ''}
+        <span>${p.status === 'completed' ? '✅' : '🔄'}</span>
+      </div>
+      ${p.tags && p.tags.length ? `<div class="tags">${p.tags.slice(0,3).map(t => `<span class="tag">${escHtml(t)}</span>`).join('')}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderHomeView(data) {
+  const view = document.getElementById('view');
+  STATE.currentView = 'home';
+
+  const interpreted = data.interpreted ? `
+    <div class="interpreted">
+      💡 理解：「${escHtml(data.interpreted)}」
+      ${data.fallback ? '<span class="fallback-badge">关键词匹配</span>' : ''}
+      ${data.reasoning ? `<br><small>${escHtml(data.reasoning)}</small>` : ''}
+    </div>
+  ` : '';
+
+  const cards = (data.results || []).map(p => `
+    <a class="project-card" onclick="event.preventDefault(); openProject('${p.safe_name}')" href="#">
+      <div class="card-header">
+        <span class="card-name">${escHtml(p.full_name)}</span>
+        <span class="card-stats">
+          <span class="stars">⭐${fmtNum(p.stars)}</span>
+          ${p.language ? `<span>${escHtml(p.language)}</span>` : ''}
+        </span>
+      </div>
+      ${p.description ? `<div class="card-desc">${escHtml(p.description)}</div>` : ''}
+      ${p.takeaway ? `<div class="card-takeaway">📌 ${escHtml(p.takeaway)}</div>` : ''}
+      ${p.tags && p.tags.length ? `<div class="card-tags">${p.tags.map(t => `<span class="card-tag">#${escHtml(t)}</span>`).join(' ')}</div>` : ''}
+    </a>
+  `).join('');
+
+  view.innerHTML = `
+    <div class="home-view">
+      ${interpreted}
+      ${data.results && data.results.length
+        ? `<h3>匹配项目 (${data.results.length}${data.total ? ' / ' + data.total : ''})</h3><div class="project-cards">${cards}</div>`
+        : `<div class="empty-state"><div class="icon">🔍</div><h3>无匹配项目</h3><p>尝试换个关键词或方向</p></div>`
+      }
+    </div>
+  `;
+}
+
+async function openProject(safeName) {
+  try {
+    const proj = await api(`/api/projects/${safeName}`);
+    STATE.currentProject = proj;
+    STATE.currentView = 'detail';
+    renderProjectList();
+    renderDetailView(proj);
+  } catch (e) {
+    showToast('无法加载项目详情', 'error');
+  }
+}
+
+function renderDetailView(proj) {
+  const view = document.getElementById('view');
+
+  let mdHtml = '';
+  if (proj.markdown) {
+    // Remove YAML frontmatter
+    let content = proj.markdown;
+    if (content.startsWith('---')) {
+      const end = content.indexOf('---', 4);
+      if (end !== -1) content = content.substring(end + 3);
+    }
+    mdHtml = marked.parse(content);
+  }
+
+  view.innerHTML = `
+    <div class="detail-view">
+      <button class="back-btn" onclick="goHome()">← 返回列表</button>
+      <div class="detail-header">
+        <div class="repo-name">
+          ${escHtml(proj.full_name)}
+          <a href="${escHtml(proj.url)}" target="_blank" style="font-size:14px;color:var(--text-muted)">🔗</a>
+        </div>
+        <div class="repo-meta">
+          <span class="stars">⭐${fmtNum(proj.stars)}</span>
+          ${proj.forks ? `<span>🍴${fmtNum(proj.forks)}</span>` : ''}
+          ${proj.language ? `<span>${escHtml(proj.language)}</span>` : ''}
+          ${proj.license ? `<span>📜${escHtml(proj.license)}</span>` : ''}
+          <span>${proj.status === 'completed' ? '✅ 已分析' : '🔄 ' + proj.status}</span>
+        </div>
+        <div class="repo-tags">
+          ${(proj.tags || []).map(t => `<span class="repo-tag">#${escHtml(t)}</span>`).join(' ')}
+        </div>
+      </div>
+      <div class="md-content">${mdHtml || '<div class="empty-state"><p>暂无内容</p></div>'}</div>
+    </div>
+  `;
+}
+
+function goHome() {
+  STATE.currentView = 'home';
+  STATE.currentProject = null;
+  renderProjectList();
+  document.getElementById('view').innerHTML = `
+    <div class="empty-state">
+      <div class="icon">📡</div>
+      <h3>GitHub Radar</h3>
+      <p>使用上方搜索框查找项目，或从左侧菜单选择已分析的项目</p>
+    </div>
+  `;
+}
+
+// ── Search ──────────────────────────────────────────────────────────
+async function doSearch() {
+  const query = document.getElementById('search-input').value.trim();
+  if (!query) {
+    // Show all projects
+    renderHomeView({ results: STATE.projects, total: STATE.projects.length });
+    return;
+  }
+
+  const view = document.getElementById('view');
+  STATE.currentView = 'home';
+  view.innerHTML = '<div class="loading"><div class="spinner"></div> AI 正在理解你的查询…</div>';
+
+  try {
+    const data = await api('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+    renderHomeView(data);
+  } catch (e) {
+    const data = e.data || {};
+    if (data.error === 'search_failed') {
+      renderSearchError(data);
+    } else {
+      view.innerHTML = `
+        <div class="home-view">
+          <div class="interpreted" style="border-left-color: var(--red)">
+            ⚠️ 搜索失败：${escHtml(e.message)}
+          </div>
+          <p style="color:var(--text-secondary)">请检查 LLM 服务是否正常运行</p>
+        </div>
+      `;
+    }
+  }
+}
+
+function renderSearchError(data) {
+  const view = document.getElementById('view');
+  STATE.currentView = 'home';
+  view.innerHTML = `
+    <div class="home-view">
+      <div class="search-error-panel">
+        <div class="error-head">
+          <h3>⚠️ 搜索失败</h3>
+          <div class="error-meta">
+            <div><strong>失败 ID：</strong>${escHtml(data.failure_id || '-')}</div>
+            <div><strong>日志路径：</strong>${escHtml(data.log_path || '-')}</div>
+            <div><strong>错误：</strong>${escHtml(data.message || '-')}</div>
+          </div>
+        </div>
+        <div class="error-section">
+          <h4>AI 总结失败原因</h4>
+          <pre>${escHtml(data.ai_summary || '无总结')}</pre>
+        </div>
+        <div class="error-section">
+          <h4>完整失败日志</h4>
+          <button class="copy-btn" onclick="copySearchErrorLog()">复制完整日志</button>
+          <pre id="search-error-log">${escHtml(data.log || '')}</pre>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function copySearchErrorLog() {
+  const text = document.getElementById('search-error-log')?.textContent || '';
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('已复制完整日志', 'success');
+  } catch {
+    showToast('复制失败，请手动选择日志文本', 'error');
+  }
+}
+
+// ── Settings ────────────────────────────────────────────────────────
+function openSettings() {
+  document.getElementById('settings-overlay').classList.add('open');
+  refreshModels();
+}
+
+function closeSettings(e) {
+  if (e && e.target !== document.getElementById('settings-overlay')) return;
+  document.getElementById('settings-overlay').classList.remove('open');
+}
+
+function populateSettingsForm() {
+  const s = STATE.settings;
+  document.getElementById('set-llm-url').value = s.llm_base_url || '';
+  document.getElementById('set-gh-token').value = s.github_token || '';
+  document.getElementById('set-vault').value = s.obsidian_vault || '';
+  document.getElementById('set-theme').value = s.theme || 'system';
+}
+
+async function refreshModels() {
+  const btn = document.getElementById('set-model');
+  btn.innerHTML = '<option value="">正在加载…</option>';
+  try {
+    const baseUrl = document.getElementById('set-llm-url').value || STATE.settings.llm_base_url;
+    const data = await api(`/api/models?base_url=${encodeURIComponent(baseUrl)}`);
+    const models = data.models || [];
+    btn.innerHTML = models.map(m =>
+      `<option value="${escHtml(m.id)}" ${m.id === (STATE.settings.llm_model || '') ? 'selected' : ''}>${escHtml(m.name)}</option>`
+    ).join('') || '<option value="">无可用模型</option>';
+
+    // Update the hidden value
+    if (!models.length) {
+      btn.innerHTML = `<option value="${escHtml(STATE.settings.llm_model || '')}">${escHtml(STATE.settings.llm_model || '未设置')}</option>`;
+    }
+  } catch (e) {
+    btn.innerHTML = `<option value="${escHtml(STATE.settings.llm_model || '')}">${escHtml(STATE.settings.llm_model || '获取失败')}</option>`;
+  }
+}
+
+async function saveSettings() {
+  const updated = {
+    llm_base_url: document.getElementById('set-llm-url').value.trim(),
+    llm_model: document.getElementById('set-model').value,
+    github_token: document.getElementById('set-gh-token').value.trim(),
+    obsidian_vault: document.getElementById('set-vault').value.trim(),
+    theme: document.getElementById('set-theme').value,
+  };
+
+  try {
+    await api('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+    STATE.settings = updated;
+    applyTheme(updated.theme);
+    showToast('✅ 设置已保存', 'success');
+    closeSettings();
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+function escHtml(s) {
+  if (!s) return '';
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function fmtNum(n) {
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+function showToast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type} show`;
+  clearTimeout(el._timeout);
+  el._timeout = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Keyboard shortcuts ──────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    document.getElementById('search-input').focus();
+  }
+  if (e.key === 'Escape') {
+    const overlay = document.getElementById('settings-overlay');
+    if (overlay.classList.contains('open')) closeSettings();
+    if (STATE.currentView === 'detail') goHome();
+  }
+});
+
+// ── Init ────────────────────────────────────────────────────────────
+loadProjects();
+loadSettings();
+</script>
+</body>
+</html>

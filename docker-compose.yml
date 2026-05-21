@@ -1,0 +1,24 @@
+services:
+  github-radar:
+    image: github-radar:0.1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: github-radar
+    restart: unless-stopped
+    ports:
+      - "4420:4420"
+    environment:
+      PORT: "4420"
+      GITHUB_RADAR_DATA_DIR: /data
+      ARTIFACTS_DIR: /data/artifacts
+      # If your LLM runs on the host machine:
+      # - Windows/Mac Docker Desktop: http://host.docker.internal:5000/v1
+      # - Linux Docker Engine: use --add-host below or host network mode.
+      LLM_BASE_URL: http://host.docker.internal:5000/v1
+      LLM_MODEL: qwen3.6-27b
+      OBSIDIAN_VAULT_PATH: /data/vaults/AI-Vault
+    volumes:
+      - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

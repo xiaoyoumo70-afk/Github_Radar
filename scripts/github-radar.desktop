@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=GitHub Radar
+Comment=Local GitHub research radar UI
+Exec=sh -c 'cd "$HOME/.local/share/github-radar" && ./scripts/github-radar-linux.sh'
+Icon=applications-internet
+Terminal=false
+Categories=Development;Utility;

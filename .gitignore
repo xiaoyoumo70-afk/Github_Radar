@@ -1,0 +1,47 @@
+# ── Build artifacts ──────────────────────────────────────────
+dist/
+dist-electron/
+dist-sidecar/
+release/
+build/
+*.spec
+
+# ── Dependencies ──────────────────────────────────────────────
+node_modules/
+
+# ── Runtime / generated ───────────────────────────────────────
+logs/
+memory/
+artifacts/
+data/
+sessions/
+uploads/
+
+# ── Sensitive / local env ─────────────────────────────────────
+.env
+!.env.example
+.ui-settings.json
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# ── OS / editor ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# ── Docker volumes ────────────────────────────────────────────
+docker/data/
+
+# ── Test / coverage ───────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/

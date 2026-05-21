@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.ui-settings.json
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+dist
+artifacts
+packaging/.cache
+runtime
+node_modules
+*.log

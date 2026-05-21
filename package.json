@@ -1,0 +1,35 @@
+{
+  "name": "github-radar",
+  "version": "0.1.0",
+  "description": "GitHub → Obsidian daily research pipeline with local LLM analysis",
+  "author": "EvoMap",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EvoMap/github-radar"
+  },
+  "type": "module",
+  "main": "desktop/main.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs",
+    "test:api": "node scripts/test-api.mjs",
+    "package:linux": "bash packaging/build-linux.sh",
+    "package:linux:bundled": "bash packaging/build-linux-bundled.sh",
+    "package:windows": "bash packaging/build-windows.sh",
+    "package:windows:bundled": "pwsh -NoProfile -ExecutionPolicy Bypass -File packaging/build-windows-bundled.ps1",
+    "docker:start": "bash scripts/docker-start.sh",
+    "docker:save": "bash scripts/docker-build-save.sh",
+    "desktop:dev": "electron .",
+    "desktop:pack:linux": "electron-builder --linux AppImage tar.gz",
+    "desktop:pack:windows": "electron-builder --win nsis zip",
+    "sidecar:linux": "bash packaging/build-python-sidecar-linux.sh",
+    "sidecar:windows": "pwsh -NoProfile -ExecutionPolicy Bypass -File packaging/build-python-sidecar-windows.ps1"
+  },
+  "bin": {
+    "github-radar-ui": "server.mjs"
+  },
+  "devDependencies": {
+    "electron": "^42.1.0",
+    "electron-builder": "^26.0.12"
+  }
+}
