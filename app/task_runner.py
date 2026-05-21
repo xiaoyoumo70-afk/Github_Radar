@@ -51,7 +51,7 @@ def run_repo_analysis(
 
     ref = RepoRef.parse(raw)
     paths = _build_paths(ref, settings)
-    llm = build_client(settings.llm_base_url, settings.llm_model)
+    llm = build_client(settings=settings)
 
     # Check for existing state
     existing = load_task_state(paths)

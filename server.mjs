@@ -42,12 +42,26 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+const PROVIDER_PRESETS = {
+  local:    { base_url: 'http://localhost:8000/v1', needs_key: false },
+  openai:   { base_url: 'https://api.openai.com/v1', needs_key: true },
+  deepseek: { base_url: 'https://api.deepseek.com/v1', needs_key: true },
+  custom:   { base_url: 'http://localhost:8000/v1', needs_key: false },
+};
+
+function resolveBaseUrl(settings) {
+  const preset = PROVIDER_PRESETS[settings.llm_provider] || PROVIDER_PRESETS.local;
+  return settings.llm_base_url || preset.base_url;
+}
+
 const DEFAULT_SETTINGS = {
-  llm_base_url: "http://localhost:5000/v1",
-  llm_model: "qwen3.6-27b",
-  github_token: "",
-  obsidian_vault: "AI-Vault",
-  theme: "system",
+  llm_provider: 'local',
+  llm_base_url: '',
+  llm_model: 'qwen3.7',
+  llm_api_key: '',
+  github_token: '',
+  obsidian_vault: 'AI-Vault',
+  theme: 'system',
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -88,8 +102,10 @@ function loadEnv() {
         const m = line.match(/^(\w+)\s*=\s*(.+)/);
         if (m) {
           const k = m[1].toLowerCase();
+          if (k === 'llm_provider') s.llm_provider = m[2].trim();
           if (k === 'llm_base_url') s.llm_base_url = m[2].trim();
           if (k === 'llm_model') s.llm_model = m[2].trim();
+          if (k === 'llm_api_key') s.llm_api_key = m[2].trim();
           if (k === 'github_token') s.github_token = m[2].trim();
           if (k === 'obsidian_vault') s.obsidian_vault = m[2].trim();
         }
@@ -116,8 +132,10 @@ function runSidecar(args, timeoutMs = 30 * 60 * 1000) {
   const env = {
     ...process.env,
     GITHUB_TOKEN: settings.github_token || '',
-    LLM_BASE_URL: settings.llm_base_url || DEFAULT_SETTINGS.llm_base_url,
+    LLM_PROVIDER: settings.llm_provider || DEFAULT_SETTINGS.llm_provider,
+    LLM_BASE_URL: resolveBaseUrl(settings),
     LLM_MODEL: settings.llm_model || DEFAULT_SETTINGS.llm_model,
+    LLM_API_KEY: settings.llm_api_key || DEFAULT_SETTINGS.llm_api_key,
     OBSIDIAN_VAULT: settings.obsidian_vault || DEFAULT_SETTINGS.obsidian_vault,
     ARTIFACTS_DIR: ARTIFACTS,
     GITHUB_RADAR_DATA_DIR: DATA_DIR,
@@ -166,8 +184,10 @@ function safeText(value, max = 12000) {
 function buildSearchFailureLog({ id, query, settings, projects, prompt, responseStatus, responseText, raw, error }) {
   const now = new Date().toISOString();
   const safeSettings = {
-    llm_base_url: settings.llm_base_url,
+    llm_provider: settings.llm_provider,
+    llm_base_url: resolveBaseUrl(settings),
     llm_model: settings.llm_model,
+    llm_api_key_present: !!settings.llm_api_key,
     github_token_present: !!settings.github_token,
     obsidian_vault: settings.obsidian_vault,
   };
@@ -209,10 +229,15 @@ async function summarizeSearchFailure({ settings, query, logText, error }) {
   const compactLog = safeText(logText, 10000);
   const prompt = `你是 GitHub Radar 的故障诊断助手。请根据失败日志总结搜索失败原因。\n\n要求：\n1. 用中文。\n2. 先给一句最可能原因。\n3. 再列出 2-4 个证据。\n4. 最后给 1-3 个修复建议。\n5. 不要泄露 token 或密钥。\n\n用户搜索：${query}\n\n错误：${error?.message || String(error)}\n\n完整日志摘录：\n${compactLog}`;
 
+  const baseUrl = resolveBaseUrl(settings);
+  const headers = { 'Content-Type': 'application/json' };
+  if (settings.llm_api_key) {
+    headers['Authorization'] = `Bearer ${settings.llm_api_key}`;
+  }
   try {
-    const resp = await fetch(`${settings.llm_base_url}/chat/completions`, {
+    const resp = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         model: settings.llm_model,
         messages: [
@@ -298,9 +323,14 @@ function getProjectMarkdown(safeName) {
   return null;
 }
 
-async function fetchModels(baseUrl) {
+async function fetchModels(baseUrl, apiKey) {
+  const headers = {};
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
   try {
-    const resp = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(5000) });
+    const resp = await fetch(`${baseUrl}/models`, {
+      headers,
+      signal: AbortSignal.timeout(5000),
+    });
     if (!resp.ok) return [];
     const data = await resp.json();
     return (data.data || data.models || data || []).map(m => ({
@@ -416,10 +446,15 @@ ${summaries}
         let responseStatus = null;
         let responseText = '';
         let raw = '';
+        const baseUrl = resolveBaseUrl(settings);
+        const headers = { 'Content-Type': 'application/json' };
+        if (settings.llm_api_key) {
+          headers['Authorization'] = `Bearer ${settings.llm_api_key}`;
+        }
         try {
-          const resp = await fetch(`${settings.llm_base_url}/chat/completions`, {
+          const resp = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             model: settings.llm_model,
             messages: [
@@ -502,9 +537,20 @@ ${summaries}
     if (method === 'GET' && pathname === '/api/settings') {
       const file = loadSettings();
       const env  = loadEnv();
+      const activeSettings = { ...env, ...file };
       return json(res, {
         file,
-        env: { llm_base_url: env.llm_base_url, llm_model: env.llm_model },
+        providers: Object.keys(PROVIDER_PRESETS).map(k => ({
+          key: k,
+          base_url: PROVIDER_PRESETS[k].base_url,
+          needs_key: PROVIDER_PRESETS[k].needs_key,
+        })),
+        env: {
+          llm_provider: activeSettings.llm_provider,
+          llm_base_url: resolveBaseUrl(activeSettings),
+          llm_model: activeSettings.llm_model,
+          llm_api_key_present: !!activeSettings.llm_api_key,
+        },
       });
     }
 
@@ -520,9 +566,9 @@ ${summaries}
     // GET /api/models
     if (method === 'GET' && pathname === '/api/models') {
       const settings = loadSettings();
-      const baseUrl = url.searchParams.get('base_url') || settings.llm_base_url;
+      const baseUrl = url.searchParams.get('base_url') || resolveBaseUrl(settings);
       try {
-        const models = await fetchModels(baseUrl);
+        const models = await fetchModels(baseUrl, settings.llm_api_key);
         return json(res, { models, base_url: baseUrl });
       } catch (e) {
         return json(res, { models: [], base_url: baseUrl, error: e.message }, 500);

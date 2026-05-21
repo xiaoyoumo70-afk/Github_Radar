@@ -433,9 +433,23 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label>LLM API 地址 <span class="hint">— 本地模型服务端点</span></label>
-        <input type="text" id="set-llm-url" placeholder="http://localhost:5000/v1">
-        <div class="form-hint">OpenAI-compatible endpoint，如 Ollama / vLLM / llama.cpp server</div>
+        <label>LLM 提供商 <span class="hint">— 选择 API 来源</span></label>
+        <select id="set-provider" onchange="onProviderChange()">
+          <option value="local">🏠 本地模型 (Ollama / vLLM / LM Studio)</option>
+          <option value="openai">🤖 OpenAI (api.openai.com)</option>
+          <option value="deepseek">🔍 DeepSeek (api.deepseek.com)</option>
+          <option value="custom">🔧 自定义 (任意 OpenAI 兼容 API)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>API 地址 <span class="hint">— 可覆盖预设地址</span></label>
+        <input type="text" id="set-llm-url" placeholder="http://localhost:8000/v1">
+        <div id="set-llm-url-hint" class="form-hint">当前: http://localhost:8000/v1</div>
+      </div>
+      <div class="form-group" id="api-key-group" style="display:none">
+        <label>API Key <span class="hint">— 云端模型必需</span></label>
+        <input type="password" id="set-api-key" placeholder="sk-...">
+        <div class="form-hint">仅存储在本地，不会上传</div>
       </div>
       <div class="form-group">
         <label>模型名称</label>
@@ -782,26 +796,61 @@ function closeSettings(e) {
   document.getElementById('settings-overlay').classList.remove('open');
 }
 
+function getEffectiveBaseUrl() {
+  const provider = document.getElementById('set-provider')?.value || 'local';
+  const presets = {
+    local: 'http://localhost:8000/v1',
+    openai: 'https://api.openai.com/v1',
+    deepseek: 'https://api.deepseek.com/v1',
+    custom: 'http://localhost:8000/v1',
+  };
+  return document.getElementById('set-llm-url').value.trim() || presets[provider] || presets.local;
+}
+
+function onProviderChange() {
+  const provider = document.getElementById('set-provider').value;
+  const presets = {
+    local: 'http://localhost:8000/v1',
+    openai: 'https://api.openai.com/v1',
+    deepseek: 'https://api.deepseek.com/v1',
+    custom: 'http://localhost:8000/v1',
+  };
+  const needsKey = { local: false, openai: true, deepseek: true, custom: false };
+
+  // Show/hide API key field
+  const keyGroup = document.getElementById('api-key-group');
+  keyGroup.style.display = needsKey[provider] ? '' : 'none';
+
+  // Update placeholder and hint
+  const urlInput = document.getElementById('set-llm-url');
+  const urlHint = document.getElementById('set-llm-url-hint');
+  urlInput.placeholder = presets[provider] || presets.local;
+  urlHint.textContent = '默认: ' + (presets[provider] || presets.local) + '（留空使用默认）';
+}
+
 function populateSettingsForm() {
   const s = STATE.settings;
+  const provider = s.llm_provider || 'local';
+  document.getElementById('set-provider').value = provider;
   document.getElementById('set-llm-url').value = s.llm_base_url || '';
+  document.getElementById('set-api-key').value = s.llm_api_key || '';
   document.getElementById('set-gh-token').value = s.github_token || '';
   document.getElementById('set-vault').value = s.obsidian_vault || '';
   document.getElementById('set-theme').value = s.theme || 'system';
+  onProviderChange();
 }
 
 async function refreshModels() {
   const btn = document.getElementById('set-model');
   btn.innerHTML = '<option value="">正在加载…</option>';
   try {
-    const baseUrl = document.getElementById('set-llm-url').value || STATE.settings.llm_base_url;
+    const baseUrl = getEffectiveBaseUrl();
     const data = await api(`/api/models?base_url=${encodeURIComponent(baseUrl)}`);
     const models = data.models || [];
     btn.innerHTML = models.map(m =>
       `<option value="${escHtml(m.id)}" ${m.id === (STATE.settings.llm_model || '') ? 'selected' : ''}>${escHtml(m.name)}</option>`
     ).join('') || '<option value="">无可用模型</option>';
 
-    // Update the hidden value
     if (!models.length) {
       btn.innerHTML = `<option value="${escHtml(STATE.settings.llm_model || '')}">${escHtml(STATE.settings.llm_model || '未设置')}</option>`;
     }
@@ -812,8 +861,10 @@ async function refreshModels() {
 
 async function saveSettings() {
   const updated = {
+    llm_provider: document.getElementById('set-provider').value,
     llm_base_url: document.getElementById('set-llm-url').value.trim(),
     llm_model: document.getElementById('set-model').value,
+    llm_api_key: document.getElementById('set-api-key').value.trim(),
     github_token: document.getElementById('set-gh-token').value.trim(),
     obsidian_vault: document.getElementById('set-vault').value.trim(),
     theme: document.getElementById('set-theme').value,
