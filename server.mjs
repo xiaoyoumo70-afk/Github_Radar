@@ -566,8 +566,14 @@ ${summaries}
       const file = loadSettings();
       const env  = loadEnv();
       const activeSettings = { ...env, ...file };
+      // Sanitize: never return sensitive values to frontend
+      const safeFile = { ...file };
+      delete safeFile.llm_api_key;
+      delete safeFile.github_token;
+      safeFile.llm_api_key_present = !!file.llm_api_key;
+      safeFile.github_token_present = !!file.github_token;
       return json(res, {
-        file,
+        file: safeFile,
         providers: Object.keys(PROVIDER_PRESETS).map(k => ({
           key: k,
           base_url: PROVIDER_PRESETS[k].base_url,

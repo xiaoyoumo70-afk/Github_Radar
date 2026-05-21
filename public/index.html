@@ -930,8 +930,11 @@ function populateSettingsForm() {
   const provider = s.llm_provider || 'local';
   document.getElementById('set-provider').value = provider;
   document.getElementById('set-llm-url').value = s.llm_base_url || '';
-  document.getElementById('set-api-key').value = s.llm_api_key || '';
-  document.getElementById('set-gh-token').value = s.github_token || '';
+  // Never echo real key: use placeholder if one exists
+  document.getElementById('set-api-key').value = '';
+  document.getElementById('set-api-key').placeholder = s.llm_api_key_present ? '•••••••• (已保存)' : 'sk-...';
+  document.getElementById('set-gh-token').value = '';
+  document.getElementById('set-gh-token').placeholder = s.github_token_present ? '•••••••• (已保存)' : 'ghp_...';
   document.getElementById('set-vault').value = s.obsidian_vault || '';
   document.getElementById('set-theme').value = s.theme || 'system';
   onProviderChange();
@@ -999,15 +1002,18 @@ async function refreshModels() {
 }
 
 async function saveSettings() {
+  const apiKeyInput = document.getElementById('set-api-key');
+  const apiKeyVal = apiKeyInput.value.trim();
   const updated = {
     llm_provider: document.getElementById('set-provider').value,
     llm_base_url: document.getElementById('set-llm-url').value.trim(),
     llm_model: document.getElementById('set-model').value,
-    llm_api_key: document.getElementById('set-api-key').value.trim(),
     github_token: document.getElementById('set-gh-token').value.trim(),
     obsidian_vault: document.getElementById('set-vault').value.trim(),
     theme: document.getElementById('set-theme').value,
   };
+  // Only send api_key if user explicitly typed a new one (empty = keep existing)
+  if (apiKeyVal) updated.llm_api_key = apiKeyVal;
 
   try {
     await api('/api/settings', {
@@ -1015,7 +1021,8 @@ async function saveSettings() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),
     });
-    STATE.settings = updated;
+    STATE.settings = { ...STATE.settings, ...updated };
+    if (apiKeyVal) STATE.settings.llm_api_key_present = true;
     applyTheme(updated.theme);
     showToast('✅ 设置已保存', 'success');
     closeSettings();
