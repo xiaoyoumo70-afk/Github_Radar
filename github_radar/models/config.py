@@ -24,7 +24,7 @@ PROVIDER_PRESETS: dict[str, dict] = {
     },
     "custom": {
         "base_url": "http://localhost:8000/v1",
-        "needs_key": False,
+        "needs_key": True,
     },
 }
 

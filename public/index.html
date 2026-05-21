@@ -442,9 +442,13 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
         </select>
       </div>
       <div class="form-group">
-        <label>API 地址 <span class="hint">— 可覆盖预设地址</span></label>
-        <input type="text" id="set-llm-url" placeholder="http://localhost:8000/v1">
-        <div id="set-llm-url-hint" class="form-hint">当前: http://localhost:8000/v1</div>
+        <label>API 地址 <span class="hint">— OpenAI 兼容格式，通常需要 /v1 后缀</span></label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="set-llm-url" placeholder="http://localhost:8000/v1" style="flex:1">
+          <button class="btn btn-secondary" onclick="testConnection()" title="测试 API 连接">🔗 测试</button>
+        </div>
+        <div id="set-llm-url-hint" class="form-hint">默认: http://localhost:8000/v1</div>
+        <div id="conn-test-result"></div>
       </div>
       <div class="form-group" id="api-key-group" style="display:none">
         <label>API Key <span class="hint">— 云端模型必需</span></label>
@@ -815,7 +819,7 @@ function onProviderChange() {
     deepseek: 'https://api.deepseek.com/v1',
     custom: 'http://localhost:8000/v1',
   };
-  const needsKey = { local: false, openai: true, deepseek: true, custom: false };
+  const needsKey = { local: false, openai: true, deepseek: true, custom: true };
 
   // Show/hide API key field
   const keyGroup = document.getElementById('api-key-group');
@@ -838,6 +842,33 @@ function populateSettingsForm() {
   document.getElementById('set-vault').value = s.obsidian_vault || '';
   document.getElementById('set-theme').value = s.theme || 'system';
   onProviderChange();
+}
+
+async function testConnection() {
+  const result = document.getElementById('conn-test-result');
+  const url = getEffectiveBaseUrl();
+  const apiKey = document.getElementById('set-api-key').value.trim();
+  result.style.color = '#f0a020';
+  result.textContent = '⏳ 测试中…';
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
+    const resp = await fetch(`${url}/models`, { headers, signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const data = await resp.json();
+      const count = (data.data || data.models || data || []).length;
+      result.style.color = '#4caf50';
+      result.textContent = `✅ 连接成功 — ${count} 个模型可用`;
+      refreshModels();
+    } else {
+      const text = await resp.text().catch(() => '');
+      result.style.color = '#f44336';
+      result.textContent = `❌ HTTP ${resp.status}${text ? ': ' + text.slice(0,80) : ''}`;
+    }
+  } catch (e) {
+    result.style.color = '#f44336';
+    result.textContent = '❌ 连接失败: ' + (e.message || 'network error').slice(0, 80);
+  }
 }
 
 async function refreshModels() {

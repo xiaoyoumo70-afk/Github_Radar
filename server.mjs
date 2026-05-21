@@ -46,7 +46,7 @@ const PROVIDER_PRESETS = {
   local:    { base_url: 'http://localhost:8000/v1', needs_key: false },
   openai:   { base_url: 'https://api.openai.com/v1', needs_key: true },
   deepseek: { base_url: 'https://api.deepseek.com/v1', needs_key: true },
-  custom:   { base_url: 'http://localhost:8000/v1', needs_key: false },
+  custom:   { base_url: 'http://localhost:8000/v1', needs_key: true },
 };
 
 function resolveBaseUrl(settings) {
