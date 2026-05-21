@@ -398,6 +398,7 @@ async function handleRequest(req, res) {
       const md = getProjectMarkdown(safeName);
       let notes = '';
       let customTags = [];
+      let synthesis = null;
       try {
         const notesPath = join(ARTIFACTS, safeName, 'notes.md');
         if (existsSync(notesPath)) notes = readFileSync(notesPath, 'utf-8');
@@ -406,7 +407,11 @@ async function handleRequest(req, res) {
         const tagsPath = join(ARTIFACTS, safeName, 'tags.json');
         if (existsSync(tagsPath)) customTags = JSON.parse(readFileSync(tagsPath, 'utf-8'));
       } catch {}
-      return json(res, { ...proj, markdown: md, notes, customTags });
+      try {
+        const synPath = join(ARTIFACTS, safeName, 'analyses', 'final_synthesis.json');
+        if (existsSync(synPath)) synthesis = JSON.parse(readFileSync(synPath, 'utf-8'));
+      } catch {}
+      return json(res, { ...proj, markdown: md, notes, customTags, synthesis });
     }
 
     // DELETE /api/projects/:safe_name

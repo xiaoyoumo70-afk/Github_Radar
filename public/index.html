@@ -294,6 +294,32 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 .md-content th { background: var(--bg-sidebar); font-weight: 600; }
 .md-content img { max-width: 100%; border-radius: var(--radius); }
 
+/* ── AI Cards ──────────────────────────────────────────────────── */
+.ai-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin: 16px 0; }
+.ai-card { display: flex; gap: 12px; padding: 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); border-left: 4px solid var(--accent); transition: box-shadow 0.15s; }
+.ai-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.ai-card-icon { font-size: 20px; flex-shrink: 0; width: 28px; text-align: center; }
+.ai-card-body { flex:1; min-width:0; }
+.ai-card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 4px; }
+.ai-card-text { font-size: 14px; color: var(--text); line-height: 1.6; }
+.ai-card-list { margin:4px 0 0 18px; font-size:13px; color:var(--text-secondary); line-height:1.7; }
+.ai-card-list code { font-size:12px; background:var(--bg-sidebar); padding:1px 5px; border-radius:3px; }
+.ai-tag { display:inline-block; font-size:12px; background:var(--bg-sidebar); color:var(--text-secondary); padding:2px 8px; border-radius:4px; margin:2px 4px 2px 0; }
+/* card color variants */
+.ai-card-takeaway { border-left-color: #e8b730; }
+.ai-card-summary { border-left-color: #2563eb; }
+.ai-card-innovation { border-left-color: #16a34a; }
+.ai-card-limitations { border-left-color: #dc2626; }
+.ai-card-learning { border-left-color: #7c3aed; }
+.ai-card-arch { border-left-color: #0891b2; }
+.ai-card-related { border-left-color: #d97706; }
+.ai-card-questions { border-left-color: #db2777; }
+.ai-card-notes { border-left-color: #6366f1; background: #faf5ff; }
+/* Markdown reference collapsible */
+.md-reference { margin:16px 0; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+.md-reference summary { padding:10px 14px; cursor:pointer; font-weight:600; font-size:14px; background:var(--bg-sidebar); user-select:none; }
+.md-reference .md-content { padding:14px; }
+
 /* ── States ────────────────────────────────────────────────────────── */
 .empty-state {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -705,21 +731,146 @@ async function openProject(safeName) {
 
 function renderDetailView(proj) {
   const view = document.getElementById('view');
+  const syn = proj.synthesis || {};
 
+  // Build AI analysis cards from synthesis data
+  let aiCards = '';
+  if (syn.one_sentence_takeaway || syn.key_innovations?.length || syn.detailed_summary) {
+    aiCards += '<div class="ai-cards">';
+    if (syn.one_sentence_takeaway) {
+      aiCards += `
+        <div class="ai-card ai-card-takeaway">
+          <div class="ai-card-icon">💡</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">一句话总结</div>
+            <div class="ai-card-text">${escHtml(syn.one_sentence_takeaway)}</div>
+          </div>
+        </div>`;
+    }
+    if (syn.detailed_summary) {
+      aiCards += `
+        <div class="ai-card ai-card-summary">
+          <div class="ai-card-icon">📋</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">详细摘要</div>
+            <div class="ai-card-text">${escHtml(syn.detailed_summary)}</div>
+          </div>
+        </div>`;
+    }
+    if (syn.key_innovations?.length) {
+      aiCards += `
+        <div class="ai-card ai-card-innovation">
+          <div class="ai-card-icon">✨</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">关键创新</div>
+            <ul class="ai-card-list">${syn.key_innovations.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>
+          </div>
+        </div>`;
+    }
+    if (syn.limitations?.length) {
+      aiCards += `
+        <div class="ai-card ai-card-limitations">
+          <div class="ai-card-icon">⚠️</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">局限与风险</div>
+            <ul class="ai-card-list">${syn.limitations.map(l => `<li>${escHtml(l)}</li>`).join('')}</ul>
+          </div>
+        </div>`;
+    }
+    if (syn.learning_order?.length) {
+      aiCards += `
+        <div class="ai-card ai-card-learning">
+          <div class="ai-card-icon">📖</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">推荐阅读顺序</div>
+            <ol class="ai-card-list">${syn.learning_order.map((l,i) => `<li><code>${escHtml(l)}</code></li>`).join('')}</ol>
+          </div>
+        </div>`;
+    }
+    if (syn.architecture_summary) {
+      aiCards += `
+        <div class="ai-card ai-card-arch">
+          <div class="ai-card-icon">🏗️</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">架构概览</div>
+            <div class="ai-card-text">${escHtml(syn.architecture_summary)}</div>
+          </div>
+        </div>`;
+    }
+    if (syn.recommended_action) {
+      const actionIcons = { 'deep-study': '🔬', 'bookmark': '🔖', 'skip': '⏭️' };
+      const actionColors = { 'deep-study': '#2563eb', 'bookmark': '#16a34a', 'skip': '#9aa0a6' };
+      const icon = actionIcons[syn.recommended_action] || '📌';
+      const color = actionColors[syn.recommended_action] || 'var(--accent)';
+      aiCards += `
+        <div class="ai-card" style="border-left-color:${color}">
+          <div class="ai-card-icon">${icon}</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">推荐行动</div>
+            <div class="ai-card-text" style="font-weight:600;color:${color}">${escHtml(syn.recommended_action)}</div>
+          </div>
+        </div>`;
+    }
+    if (syn.related_projects?.length) {
+      aiCards += `
+        <div class="ai-card ai-card-related">
+          <div class="ai-card-icon">🔗</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">相关项目</div>
+            <div class="ai-card-text">${syn.related_projects.map(r => `<span class="ai-tag">${escHtml(r)}</span>`).join(' ')}</div>
+          </div>
+        </div>`;
+    }
+    if (syn.follow_up_questions?.length) {
+      aiCards += `
+        <div class="ai-card ai-card-questions">
+          <div class="ai-card-icon">❓</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">值得深入的问题</div>
+            <ul class="ai-card-list">${syn.follow_up_questions.map(q => `<li>${escHtml(q)}</li>`).join('')}</ul>
+          </div>
+        </div>`;
+    }
+    aiCards += '</div>';
+  }
+
+  // User notes (from edit modal)
+  let notesHtml = '';
+  if (proj.notes) {
+    notesHtml = `
+      <div class="ai-cards">
+        <div class="ai-card ai-card-notes">
+          <div class="ai-card-icon">📝</div>
+          <div class="ai-card-body">
+            <div class="ai-card-label">我的备注</div>
+            <div class="ai-card-text">${marked.parse(proj.notes)}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Markdown from Obsidian (as reference)
   let mdHtml = '';
   if (proj.markdown) {
-    // Remove YAML frontmatter
     let content = proj.markdown;
     if (content.startsWith('---')) {
       const end = content.indexOf('---', 4);
       if (end !== -1) content = content.substring(end + 3);
     }
-    mdHtml = marked.parse(content);
+    mdHtml = `
+      <details class="md-reference" open>
+        <summary>📄 完整分析报告 (Markdown)</summary>
+        <div class="md-content">${marked.parse(content)}</div>
+      </details>`;
   }
+
+  // Custom tags
+  const allTags = [...new Set([...(proj.customTags || []), ...(proj.tags || [])])];
 
   view.innerHTML = `
     <div class="detail-view">
       <button class="back-btn" onclick="goHome()">← 返回列表</button>
+      <button class="back-btn" onclick="openEditModal('${proj.safe_name}')" style="margin-left:8px">✎ 编辑备注</button>
       <div class="detail-header">
         <div class="repo-name">
           ${escHtml(proj.full_name)}
@@ -732,11 +883,11 @@ function renderDetailView(proj) {
           ${proj.license ? `<span>📜${escHtml(proj.license)}</span>` : ''}
           <span>${proj.status === 'completed' ? '✅ 已分析' : '🔄 ' + proj.status}</span>
         </div>
-        <div class="repo-tags">
-          ${(proj.tags || []).map(t => `<span class="repo-tag">#${escHtml(t)}</span>`).join(' ')}
-        </div>
+        ${allTags.length ? `<div class="repo-tags">${allTags.map(t => `<span class="repo-tag">#${escHtml(t)}</span>`).join(' ')}</div>` : ''}
       </div>
-      <div class="md-content">${mdHtml || '<div class="empty-state"><p>暂无内容</p></div>'}</div>
+      ${aiCards}
+      ${notesHtml}
+      ${mdHtml}
     </div>
   `;
 }
