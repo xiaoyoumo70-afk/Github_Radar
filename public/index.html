@@ -222,6 +222,13 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
   font-size: 13px; color: var(--text); background: var(--bg-sidebar);
   padding: 8px 12px; border-radius: 6px; border-left: 3px solid var(--green);
 }
+
+/* Item action buttons */
+.item-btn { opacity:0; background:none; border:none; cursor:pointer; padding:2px 6px; font-size:12px; border-radius:3px; transition:opacity 0.15s; }
+.project-item:hover .item-btn { opacity:0.7; }
+.item-btn:hover { opacity:1 !important; }
+.item-del:hover { color:#fff; background:#e74c3c; }
+.item-edit:hover { color:#fff; background:var(--accent); }
 .project-card .card-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
 .project-card .card-tag {
   font-size: 11px; padding: 2px 8px; border-radius: 10px;
@@ -490,6 +497,35 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
   </div>
 </div>
 
+<!-- ── Edit Notes Modal ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="edit-overlay" onclick="closeEditModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3>✎ 编辑项目</h3>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-safe-name">
+      <div class="form-group">
+        <label>项目</label>
+        <div id="edit-full-name" style="font-weight:600;color:var(--text-primary)"></div>
+      </div>
+      <div class="form-group">
+        <label>备注 <span class="hint">— Markdown 格式</span></label>
+        <textarea id="edit-notes" rows="8" placeholder="添加你的笔记、评价、TODO…（支持 Markdown）" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;resize:vertical"></textarea>
+      </div>
+      <div class="form-group">
+        <label>标签 <span class="hint">— 逗号分隔</span></label>
+        <input type="text" id="edit-tags" placeholder="前端, AI, 值得学习">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveEdit()">💾 保存</button>
+        <button class="btn btn-secondary" onclick="closeEditModal()">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Toast ─────────────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
@@ -602,7 +638,11 @@ function renderProjectList() {
   el.innerHTML = STATE.filtered.map(p => `
     <div class="project-item ${STATE.currentProject?.safe_name === p.safe_name ? 'active' : ''}"
          onclick="openProject('${p.safe_name}')">
-      <div class="name">${escHtml(p.full_name)}</div>
+      <div class="name">
+        ${escHtml(p.full_name)}
+        <button class="item-btn item-edit" onclick="event.stopPropagation(); openEditModal('${p.safe_name}')" title="编辑备注">✎</button>
+        <button class="item-btn item-del" onclick="event.stopPropagation(); deleteProject('${p.safe_name}', '${escHtml(p.full_name)}')" title="删除">✕</button>
+      </div>
       <div class="meta">
         <span class="stars">⭐${fmtNum(p.stars)}</span>
         ${p.language ? `<span class="lang">${escHtml(p.language)}</span>` : ''}
@@ -712,6 +752,59 @@ function goHome() {
       <p>使用上方搜索框查找项目，或从左侧菜单选择已分析的项目</p>
     </div>
   `;
+}
+
+async function deleteProject(safeName, fullName) {
+  if (!confirm(`确定删除「${fullName}」？\n所有分析数据将被永久删除。`)) return;
+  try {
+    await api(`/api/projects/${safeName}`, { method: 'DELETE' });
+    showToast(`已删除 ${fullName}`, 'success');
+    STATE.projects = STATE.projects.filter(p => p.safe_name !== safeName);
+    STATE.filtered = STATE.filtered.filter(p => p.safe_name !== safeName);
+    if (STATE.currentProject?.safe_name === safeName) goHome();
+    renderProjectList();
+  } catch (e) {
+    showToast('删除失败: ' + e.message, 'error');
+  }
+}
+
+async function openEditModal(safeName) {
+  try {
+    const proj = await api(`/api/projects/${safeName}`);
+    document.getElementById('edit-safe-name').value = safeName;
+    document.getElementById('edit-full-name').textContent = proj.full_name;
+    document.getElementById('edit-notes').value = proj.notes || '';
+    document.getElementById('edit-tags').value = (proj.customTags || []).join(', ');
+    document.getElementById('edit-overlay').classList.add('open');
+  } catch (e) {
+    showToast('加载项目失败', 'error');
+  }
+}
+
+function closeEditModal(e) {
+  if (e && e.target !== document.getElementById('edit-overlay')) return;
+  document.getElementById('edit-overlay').classList.remove('open');
+}
+
+async function saveEdit() {
+  const safeName = document.getElementById('edit-safe-name').value;
+  const notes = document.getElementById('edit-notes').value;
+  const tagsStr = document.getElementById('edit-tags').value;
+  const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+  try {
+    await api(`/api/projects/${safeName}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, tags }),
+    });
+    showToast('已保存', 'success');
+    closeEditModal();
+    if (STATE.currentProject?.safe_name === safeName) {
+      openProject(safeName);
+    }
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
 }
 
 // ── Search ──────────────────────────────────────────────────────────
@@ -856,10 +949,19 @@ async function testConnection() {
     const resp = await fetch(`${url}/models`, { headers, signal: AbortSignal.timeout(8000) });
     if (resp.ok) {
       const data = await resp.json();
-      const count = (data.data || data.models || data || []).length;
+      const models = (data.data || data.models || data || []).map(m => ({
+        id: m.id || m.name || m.model || 'unknown',
+        name: m.name || m.model || m.id || 'unknown',
+      }));
+      const count = models.length;
       result.style.color = '#4caf50';
-      result.textContent = `✅ 连接成功 — ${count} 个模型可用`;
-      refreshModels();
+      // Auto-populate model dropdown
+      populateModelDropdown(models);
+      if (count === 1) {
+        result.textContent = `✅ 连接成功 — 自动选择 «${models[0].name}»`;
+      } else {
+        result.textContent = `✅ 连接成功 — ${count} 个模型可用，请从下拉框选择`;
+      }
     } else {
       const text = await resp.text().catch(() => '');
       result.style.color = '#f44336';
@@ -871,6 +973,17 @@ async function testConnection() {
   }
 }
 
+function populateModelDropdown(models) {
+  const btn = document.getElementById('set-model');
+  const current = STATE.settings.llm_model || '';
+  btn.innerHTML = models.map(m =>
+    `<option value="${escHtml(m.id)}" ${m.id === current ? 'selected' : ''}>${escHtml(m.name)}</option>`
+  ).join('');
+  if (!models.length) {
+    btn.innerHTML = `<option value="${escHtml(current)}">${escHtml(current || '未设置')}</option>`;
+  }
+}
+
 async function refreshModels() {
   const btn = document.getElementById('set-model');
   btn.innerHTML = '<option value="">正在加载…</option>';
@@ -878,15 +991,10 @@ async function refreshModels() {
     const baseUrl = getEffectiveBaseUrl();
     const data = await api(`/api/models?base_url=${encodeURIComponent(baseUrl)}`);
     const models = data.models || [];
-    btn.innerHTML = models.map(m =>
-      `<option value="${escHtml(m.id)}" ${m.id === (STATE.settings.llm_model || '') ? 'selected' : ''}>${escHtml(m.name)}</option>`
-    ).join('') || '<option value="">无可用模型</option>';
-
-    if (!models.length) {
-      btn.innerHTML = `<option value="${escHtml(STATE.settings.llm_model || '')}">${escHtml(STATE.settings.llm_model || '未设置')}</option>`;
-    }
+    populateModelDropdown(models);
   } catch (e) {
-    btn.innerHTML = `<option value="${escHtml(STATE.settings.llm_model || '')}">${escHtml(STATE.settings.llm_model || '获取失败')}</option>`;
+    const current = STATE.settings.llm_model || '';
+    btn.innerHTML = `<option value="${escHtml(current)}">${escHtml(current || '获取失败')}</option>`;
   }
 }
 

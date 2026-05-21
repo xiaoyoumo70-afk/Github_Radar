@@ -396,7 +396,17 @@ async function handleRequest(req, res) {
       const proj = projects.find(p => p.safe_name === safeName);
       if (!proj) return json(res, { error: 'Not found' }, 404);
       const md = getProjectMarkdown(safeName);
-      return json(res, { ...proj, markdown: md });
+      let notes = '';
+      let customTags = [];
+      try {
+        const notesPath = join(ARTIFACTS, safeName, 'notes.md');
+        if (existsSync(notesPath)) notes = readFileSync(notesPath, 'utf-8');
+      } catch {}
+      try {
+        const tagsPath = join(ARTIFACTS, safeName, 'tags.json');
+        if (existsSync(tagsPath)) customTags = JSON.parse(readFileSync(tagsPath, 'utf-8'));
+      } catch {}
+      return json(res, { ...proj, markdown: md, notes, customTags });
     }
 
     // DELETE /api/projects/:safe_name
@@ -409,6 +419,24 @@ async function handleRequest(req, res) {
       if (!existsSync(dir)) return json(res, { error: 'Not found' }, 404);
       rmSync(dir, { recursive: true, force: true });
       return json(res, { ok: true, deleted: safeName });
+    }
+
+    // PUT /api/projects/:safe_name — update project notes
+    if (method === 'PUT' && projMatch) {
+      const safeName = projMatch[1];
+      if (safeName.includes('..') || safeName.includes('/')) {
+        return json(res, { error: 'Invalid project name' }, 400);
+      }
+      const dir = join(ARTIFACTS, safeName);
+      if (!existsSync(dir)) return json(res, { error: 'Not found' }, 404);
+      const body = await readBody(req);
+      if (body.notes !== undefined) {
+        writeFileSync(join(dir, 'notes.md'), String(body.notes || ''), 'utf-8');
+      }
+      if (body.tags !== undefined) {
+        writeFileSync(join(dir, 'tags.json'), JSON.stringify(body.tags, null, 2), 'utf-8');
+      }
+      return json(res, { ok: true, updated: safeName });
     }
 
     // POST /api/search
