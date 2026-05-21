@@ -14,6 +14,13 @@ rsync -a \
   --exclude '__pycache__' \
   --exclude '*.pyc' \
   --exclude 'dist' \
+  --exclude 'dist-electron' \
+  --exclude 'dist-sidecar' \
+  --exclude 'build' \
+  --exclude 'release' \
+  --exclude 'logs' \
+  --exclude 'memory' \
+  --exclude '.git' \
   --exclude 'artifacts' \
   "$ROOT/" "$BUILD/"
 
